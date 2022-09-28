@@ -3,6 +3,56 @@
 const fs = require("fs-extra")
 const {getAudioDurationInSeconds} = require("get-audio-duration")
 
+const lang_names = {
+    "am": "Amharic",
+    "ar": "Arabic",
+    "da": "Danish",
+    "de": "German",
+    "el": "Greek",
+    "en": "English",
+    "es": "Spanish",
+    "fi": "Finnish",
+    "fr": "French",
+    "ha": "Hausa",
+    "hi": "Hindi",
+    "hu": "Hungarian",
+    "it": "Italian",
+    "jp": "Japanese",
+    "ko": "Korean",
+    "la": "Latin",
+    "mn": "Mongolian",
+    "nl": "Dutch",
+    "pl": "Polish",
+    "pt": "Portuguese",
+    "ro": "Romanian",
+    "ru": "Russian",
+    "sw": "Kiswahili",
+    "sv": "Swedish",
+    "th": "Thai",
+    "tr": "Turkish",
+    "uk": "Ukrainian",
+    "vi": "Vietnamese",
+    "wo": "Wolof",
+    "yo": "Yoruba",
+    "zh": "Chinese Mandarin",
+}
+
+const makeLanguageDropdown = () => {
+    const languages = fs.readdirSync(`${window.path}/python/transcribe/wav2vec2`)
+        .filter(name => !name.startsWith("_")&&!name.includes("."))
+        .map(langCode => {return [langCode, lang_names[langCode]]}).sort((a,b) => a[1]<b[1]?-1:1)
+    const selectElem = createElem("select")
+    languages.forEach(lang => {
+        const optionElem = createElem("option", {value: lang[0]})
+        optionElem.innerHTML = lang[1]
+        selectElem.appendChild(optionElem)
+    })
+    selectElem.value = "en"
+    const langDescription = createElem("div", "Language (Note: Only English training is supported with v2 models. Check v3 models for multi-lingual training.)")
+    const rowItemLang = createElem("div", createElem("div", langDescription), createElem("div", selectElem))
+    return [rowItemLang, selectElem]
+}
+
 const tools = {
     "Audio formatting": {
         taskId: "formatting",
@@ -51,23 +101,36 @@ const tools = {
         toolSettings: {},
         inputFileType: ".wav",
         setupFn: (taskId) => {
+            window.tools_state.toolSettings["diarization"] = window.tools_state.toolSettings["diarization"] || {}
+            window.tools_state.toolSettings["diarization"].mergeSingleOutputFolder = false
+            window.tools_state.toolSettings["diarization"].outputAudacityLabels = false
+
             const ckbxDescription = createElem("div", "Merge output into one folder (Only use when you are sure all files have only one voice)")
             const ckbx = createElem("input", {type: "checkbox"})
             ckbx.style.height = "20px"
             ckbx.style.width = "20px"
-
-            window.tools_state.toolSettings["diarization"] = window.tools_state.toolSettings["diarization"] || {}
-            window.tools_state.toolSettings["diarization"].mergeSingleOutputFolder = false
-
             ckbx.addEventListener("click", () => {
                 window.tools_state.toolSettings["diarization"].mergeSingleOutputFolder = ckbx.checked
             })
-
             const container = createElem("div", ckbx, ckbxDescription)
             container.style.display = "flex"
             container.style.justifyContent = "center"
             container.style.alignItems = "center"
+
+            const ckbxAudacityLabelsDescription = createElem("div", "Output labels for Audacity")
+            const ckbxAudacityLabels = createElem("input", {type: "checkbox"})
+            ckbxAudacityLabels.style.height = "20px"
+            ckbxAudacityLabels.style.width = "20px"
+            ckbxAudacityLabels.addEventListener("click", () => {
+                window.tools_state.toolSettings["diarization"].outputAudacityLabels = ckbxAudacityLabels.checked
+            })
+            const containerAudacityLabels = createElem("div", ckbxAudacityLabels, ckbxAudacityLabelsDescription)
+            containerAudacityLabels.style.display = "flex"
+            containerAudacityLabels.style.justifyContent = "center"
+            containerAudacityLabels.style.alignItems = "center"
+
             toolDescription.appendChild(container)
+            toolDescription.appendChild(containerAudacityLabels)
         }
     },
     "AI Source separation": {
@@ -124,6 +187,23 @@ const tools = {
         inputDirectory: `${window.path}/python/wem2ogg/input`,
         outputDirectory: `${window.path}/python/wem2ogg/output/`,
         inputFileType: ".wem"
+    },
+    "Make .srt": {
+        taskId: "make_srt",
+        description: "Create an .srt for mp4 files, using the speaker diarization and auto-transcript tools. Useful for sanity checking, and easier external tweaking when using data from a video.",
+        inputDirectory: `${window.path}/python/make_srt/input`,
+        outputDirectory: `${window.path}/python/make_srt/output/`,
+        inputFileType: "folder",
+        setupFn: (taskId) => {
+            window.tools_state.toolSettings["make_srt"] = window.tools_state.toolSettings["make_srt"] || {}
+            window.tools_state.toolSettings["make_srt"].language = "en"
+
+            const [rowItemLang, selectElem] = makeLanguageDropdown()
+            selectElem.addEventListener("change", () => window.tools_state.toolSettings["make_srt"].language=selectElem.value)
+
+            const container = createElem("div.flexTable.toolSettingsTable", rowItemLang)
+            toolDescription.appendChild(container)
+        }
     },
     "Cluster speakers": {
         taskId: "cluster_speakers",
@@ -204,7 +284,7 @@ const tools = {
             })
 
             const clusterFolderPrefixDescription = createElem("div", "Prefix cluster folder names with something")
-            const clusterFolderPrefixInput = createElem("input", {type: "number"})
+            const clusterFolderPrefixInput = createElem("input")
             clusterFolderPrefixInput.disabled = true
             clusterFolderPrefixInput.style.width = "70%"
             clusterFolderPrefixInput.value = "0001"
@@ -248,6 +328,10 @@ const tools = {
             window.tools_state.toolSettings["transcribe"].ignore_existing_transcript = false
             window.tools_state.toolSettings["transcribe"].language = "en"
 
+            const [rowItemLang, selectElem] = makeLanguageDropdown()
+            selectElem.addEventListener("change", () => window.tools_state.toolSettings["transcribe"].language=selectElem.value)
+
+
             const ckbxDescription = createElem("div", "Use multi-processing")
             const ckbx = createElem("input", {type: "checkbox"})
             ckbx.style.height = "20px"
@@ -276,7 +360,7 @@ const tools = {
 
 
 
-            const container = createElem("div.flexTable.toolSettingsTable", rowItemUseMp, rowItemtranscribeMPworkers)
+            const container = createElem("div.flexTable.toolSettingsTable", rowItemUseMp, rowItemtranscribeMPworkers, rowItemLang)
             toolDescription.appendChild(container)
         }
     },
@@ -394,7 +478,7 @@ const tools = {
     },
     "SRT split": {
         taskId: "srt_split",
-        description: "Split long clips based on their accompanying .srt subtitle file, into short clips with the associated transcript.",
+        description: "Split long .mp4 clips based on their accompanying .srt subtitle file, into short clips with the associated transcript.",
         inputDirectory: `${window.path}/python/srt_split/input`,
         outputDirectory: `${window.path}/python/srt_split/output`,
         inputFileType: "folder",
@@ -424,12 +508,11 @@ const tools = {
 
 // Brute force progress indicator, for when the WebSockets don't work
 setInterval(() => {
-    if (["transcribe", "srt_split"].includes(window.tools_state.taskId)) {
-        if (window.tools_state.taskId && fs.existsSync(`${window.path}/python/${window.tools_state.taskId}/.progress.txt`)) {
+    if (["transcribe", "srt_split", "make_srt"].includes(window.tools_state.taskId)) {
+        if (window.tools_state.running && window.tools_state.taskId && fs.existsSync(`${window.path}/python/${window.tools_state.taskId}/.progress.txt`)) {
             const fileData = fs.readFileSync(`${window.path}/python/${window.tools_state.taskId}/.progress.txt`, "utf8")
             if (fileData.length) {
-                let percentDone = parseFloat(fileData)
-                toolProgressInfo.innerHTML = `${parseInt(percentDone*100)/100}%`
+                toolProgressInfo.innerHTML = fileData
             }
         } else {
             toolProgressInfo.innerHTML = ""
@@ -550,6 +633,7 @@ toolsRunTool.addEventListener("click", () => {
     }
     toolsRunTool.disabled = true
     prepAudioStart.disabled = true
+    window.tools_state.running = true
     toolsList.querySelectorAll("button").forEach(button => button.disabled = true)
     window.deleteFolderRecursive(window.tools_state.outputDirectory, true)
 
@@ -587,6 +671,21 @@ toolsRunTool.addEventListener("click", () => {
 const doNextTaskItem = () => {
     const inPath = `${window.tools_state.inputDirectory}/${window.tools_state.taskFiles[window.tools_state.taskFileIndex]}`
     const inPath2 = window.tools_state.inputDirectory2
+
+    if (!window.tools_state.taskFiles.length) {
+        return window.errorModal("No input files of the required type were found.").then(() => {
+            if (window.tools_state.spinnerElem) {
+                window.tools_state.spinnerElem.style.display = "none"
+            }
+            window.tools_state.progressElem.innerHTML = ""
+            toolProgressInfo.innerHTML = ""
+            toolsRunTool.disabled = false
+            prepAudioStart.disabled = false
+            toolsList.querySelectorAll("button").forEach(button => button.disabled = false)
+            window.tools_state.infoElem.innerHTML = ""
+            window.tools_state.currentFileElem.innerHTML = ""
+        })
+    }
 
     if (window.tools_state.taskFiles[window.tools_state.taskFileIndex].length) {
         window.tools_state.currentFileElem.innerHTML = `File: ${window.tools_state.taskFiles[window.tools_state.taskFileIndex]}`
@@ -960,6 +1059,7 @@ prepTextStart.addEventListener("click", () => {
 })
 
 
+window.wer_cache = {}
 
 checkTextQualityBtn.addEventListener("click", () => {
     if (window.appState.currentDataset!=undefined) {
@@ -1010,6 +1110,8 @@ checkTextQualityBtn.addEventListener("click", () => {
                                  wer_key[fname] = score
                             })
 
+                            window.wer_cache[window.appState.currentDataset] = {}
+
                             window.datasets[window.appState.currentDataset].metadata.forEach((sampleItems, si) => {
 
                                 const fileName = sampleItems[0].fileName.toLowerCase()
@@ -1018,15 +1120,17 @@ checkTextQualityBtn.addEventListener("click", () => {
                                     return
                                 }
 
+
                                 const wer_elem = sampleItems[1].children[4]
                                 const score = parseFloat(wer_key[fileName].trim())/2
 
+                                window.wer_cache[window.appState.currentDataset][si] = score
+
                                 window.datasets[window.appState.currentDataset].metadata.wer = score
 
-                                const r_col = Math.min(score, 1)
-                                const g_col = 1 - r_col
-
-                                wer_elem.style.background = `rgba(${r_col*255},${g_col*255},50, 0.7)`
+                                // const r_col = Math.min(score, 1)
+                                // const g_col = 1 - r_col
+                                // wer_elem.style.background = `rgba(${r_col*255},${g_col*255},50, 0.7)`
                             })
 
                             window.refreshRecordsList(window.appState.currentDataset)

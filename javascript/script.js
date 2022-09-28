@@ -1,5 +1,5 @@
 "use strict"
-window.appVersion = "1.0.6"
+window.appVersion = "1.1.3"
 app_version.innerHTML = "v"+window.appVersion
 window.PRODUCTION = module.filename.includes("resources")
 const path = PRODUCTION ? `${__dirname.replace(/\\/g,"/")}` : `${__dirname.replace(/\\/g,"/")}`
@@ -25,7 +25,7 @@ const {shell, ipcRenderer} = require("electron")
 const {xVAAppLogger} = require("./javascript/appLogger.js")
 window.appLogger = new xVAAppLogger(`./app.log`, window.appVersion)
 window.appLogger.log(`Ports | Server: ${window.SERVER_PORT} | WebSocket: ${window.WEBSOCKET_PORT}`)
-process.on(`uncaughtException`, data => window.appLogger.log(`uncaughtException: ${data}`))
+process.on(`uncaughtException`, (data, origin) => {window.appLogger.log(`uncaughtException: ${data}`);window.appLogger.log(`uncaughtException: ${origin}`)})
 window.onerror = (err, url, lineNum) => window.appLogger.log(`[line: ${lineNum}] onerror: ${err}`)
 require("./javascript/util.js")
 require("./javascript/settingsMenu.js")
@@ -38,8 +38,6 @@ if (!window.ws || !window.ws.readyState) {
     window.spinnerModal("Waiting for the WebSocket to connect...")
     const checkIsUp = () => {
         setTimeout(() => {
-            console.log(window.ws)
-            // console.log(window.ws.readyState)
             if (window.ws && window.ws.readyState) {
                 window.closeModal()
             } else {
@@ -142,6 +140,24 @@ const initWebSocket = () => {
                     window.training_state.isBatchTraining = false
                 }
             }
+
+        } else if (event.data.includes("ERROR")) {
+
+            window.appLogger.log(event.data)
+            window.errorModal(event.data).then(() => {
+
+                if (window.tools_state.spinnerElem) {
+                    window.tools_state.spinnerElem.style.display = "none"
+                }
+                window.tools_state.progressElem.innerHTML = ""
+                toolProgressInfo.innerHTML = ""
+                toolsRunTool.disabled = false
+                prepAudioStart.disabled = false
+                toolsList.querySelectorAll("button").forEach(button => button.disabled = false)
+                window.tools_state.infoElem.innerHTML = ""
+                window.tools_state.currentFileElem.innerHTML = ""
+
+            })
 
         } else {
             try {
@@ -423,6 +439,7 @@ btn_save.addEventListener("click", () => {
             } else {
                 setRecordFocus()
             }
+            window.appState.skipRefreshing = false
         }
 
         // Copy over the recorded file, if one exists
@@ -819,6 +836,15 @@ window.refreshRecordsList = (dataset) => {
 
     for (let ri=startIndex; ri<endIndex; ri++) {
         const recordAndElem = filteredRows[ri]
+
+        if (window.wer_cache[window.appState.currentDataset]) {
+            const score = window.wer_cache[window.appState.currentDataset][ri]
+            const r_col = Math.min(score, 1)
+            const g_col = 1 - r_col
+            recordAndElem[1].children[4].style.background = `rgba(${r_col*255},${g_col*255},50, 0.7)`
+        } else {
+            recordAndElem[1].children[4].style.background = `none`
+        }
 
         fs.exists(recordAndElem[3], exists => {
             if (exists) {
@@ -1221,6 +1247,12 @@ const initDatasetMeta = (callback) => {
             callback()
         }
 
+        try {
+            fs.makedirSync(`${window.userSettings.datasetsPath}/${window.appState.currentDataset||composedVoiceId.innerHTML}`)
+            fs.mkdirSync(`${window.userSettings.datasetsPath}/${composedVoiceId.innerHTML}`)
+            fs.mkdirSync(`${window.userSettings.datasetsPath}/${composedVoiceId.innerHTML}/wavs`)
+        } catch (e) {}
+
         fs.writeFileSync(`${window.userSettings.datasetsPath}/${window.appState.currentDataset||composedVoiceId.innerHTML}/dataset_metadata.json`, JSON.stringify({
             "version": "2.0",
             "modelVersion": parseFloat(datasetMeta_modelVersion.value).toFixed(1),
@@ -1231,7 +1263,7 @@ const initDatasetMeta = (callback) => {
             "games": [
                 {
                     "gameId": datasetMeta_gameId.value.trim().toLowerCase(),
-                    "voiceId": datasetMeta_voiceId.value.trim().toLowerCase(),
+                    "voiceId": composedVoiceId.innerHTML,
                     "voiceName": datasetMeta_voiceName.value.trim(),
                     "resemblyzer": [],
                     "gender": (datasetMeta_gender_male.checked ? "male" : (datasetMeta_gender_female.checked ? "female" : "other")),
@@ -1304,8 +1336,9 @@ window.setupModal(btn_editdatasetmeta, datasetMetaContainer, () => {
 
     datasetMeta_voiceName.value = datasetMeta.games[0].voiceName
     datasetMeta_gameId.value = datasetMeta.games[0].gameId
-    datasetMeta_gameIdCode.value = datasetMeta.games[0].voiceId.includes("_") ? datasetMeta.games[0].voiceId.split("_")[0] : ""
-    datasetMeta_voiceId.value = datasetMeta.games[0].voiceId
+    // datasetMeta_gameIdCode.value = datasetMeta.games[0].voiceId.includes("_") ? datasetMeta.games[0].voiceId.split("_")[0] : ""
+    datasetMeta_gameIdCode.value = datasetMeta.games[0].voiceId.split("_")[0]
+    datasetMeta_voiceId.value = datasetMeta.games[0].voiceId.split("_").slice(1, 10000).join("_")
     datasetMeta_langcode.value = datasetMeta.lang
     datasetMeta_modelVersion.value = parseFloat(datasetMeta.version.split(".").length==2 ? datasetMeta.version : datasetMeta.version.split(".").splice(0,2).join("."))
     datasetMeta_gender_male.checked = datasetMeta.games[0].gender=="male"
@@ -1316,11 +1349,13 @@ window.setupModal(btn_editdatasetmeta, datasetMetaContainer, () => {
     datasetMeta_license.value = datasetMeta.license || ""
 
     initDatasetMeta(() => {
-        composedVoiceId.innerHTML = voiceId
+        composedVoiceId.innerHTML = `${datasetMeta_gameIdCode.value}_${datasetMeta_voiceId.value}`
     })
-    composedVoiceId.innerHTML = voiceId
-    datasetMeta_voiceId.value = voiceId
+    composedVoiceId.innerHTML = `${datasetMeta_gameIdCode.value}_${datasetMeta_voiceId.value}`
 })
+
+datasetMeta_gameIdCode.addEventListener("keyup", () => composedVoiceId.innerHTML = `${datasetMeta_gameIdCode.value}_${datasetMeta_voiceId.value}`)
+datasetMeta_voiceId.addEventListener("keyup", () => composedVoiceId.innerHTML = `${datasetMeta_gameIdCode.value}_${datasetMeta_voiceId.value}`)
 
 
 window.setupModal(btn_addmissingmeta, datasetMetaContainer, () => {
@@ -1359,7 +1394,7 @@ datasetMeta_voiceName.addEventListener("keyup", () => {
 datasetMeta_voiceId.addEventListener("keyup", () => {
     voiceIDInputChanged = true
     if (datasetMeta_voiceId.value.trim().length && datasetMeta_gameIdCode.value.trim().length) {
-        composedVoiceId.innerHTML = `${datasetMeta_voiceId.value.trim().toLowerCase()}`
+        composedVoiceId.innerHTML = `${datasetMeta_gameIdCode.value}_${datasetMeta_voiceId.value.trim().toLowerCase()}`
     }
 })
 datasetMeta_gameIdCode.addEventListener("keyup", () => {

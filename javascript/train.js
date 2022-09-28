@@ -294,6 +294,7 @@ window.refreshTrainingQueueList = () => {
             trainingQueueBtnMoveUp.disabled = false
             trainingQueueBtnMoveDown.disabled = false
             trainingQueueBtnDelete.disabled = false
+            trainingOpenCkpts.disabled = false
 
             if (window.training_state.selectedQueueItem!=di) {
 
@@ -432,6 +433,11 @@ graphs_only_latest_val.addEventListener("keyup", () => {
     localStorage.setItem("graphs_only_latest", window.graphs_only_latest)
     window.updateTrainingGraphs()
 })
+graphs_only_latest_val.addEventListener("change", () => {
+    window.graphs_only_latest = graphs_only_latest_chbx.checked ? parseInt(graphs_only_latest_val.value) : undefined
+    localStorage.setItem("graphs_only_latest", window.graphs_only_latest)
+    window.updateTrainingGraphs()
+})
 
 window.graphs_only_latest = localStorage.getItem("graphs_only_latest")
 if (window.graphs_only_latest) {
@@ -563,6 +569,11 @@ stage_select.addEventListener("change", () => {
 
 
 
+fp_ckpt_option_other.addEventListener("click", () => trainingAddConfigCkptPathInput.disabled = !fp_ckpt_option_other.checked)
+fp_ckpt_option_other.addEventListener("change", () => trainingAddConfigCkptPathInput.disabled = !fp_ckpt_option_other.checked)
+fp_ckpt_option_female.addEventListener("change", () => trainingAddConfigCkptPathInput.disabled = !fp_ckpt_option_other.checked)
+fp_ckpt_option_male.addEventListener("change", () => trainingAddConfigCkptPathInput.disabled = !fp_ckpt_option_other.checked)
+
 window.showConfigMenu = (startingData, di) => {
 
     queueItemConfigModalContainer.style.opacity = 1
@@ -576,10 +587,10 @@ window.showConfigMenu = (startingData, di) => {
         "checkpoint": undefined,
         "hifigan_checkpoint": undefined,
 
-        "use_amp": "true",
-        "num_workers": 4, // TODO, app-level default settings
-        "batch_size": 8, // TODO, app-level default settings
-        "epochs_per_checkpoint": 3, // TODO, app-level default settings
+        // "use_amp": "true",
+        // "num_workers": 4, // TODO, app-level default settings
+        // "batch_size": 8, // TODO, app-level default settings
+        // "epochs_per_checkpoint": 3, // TODO, app-level default settings
         "force_stage": undefined,
     }
     if (typeof startingData == "string") {
@@ -588,7 +599,7 @@ window.showConfigMenu = (startingData, di) => {
 
     window.training_state.currentlyConfiguringDatasetI = di
 
-    trainingAddConfigDatasetPathInput.value = ""
+    trainingAddConfigDatasetPathInput.value = window.userSettings.datasetsPath
     trainingAddConfigDatasetPathInput.disabled = !!startingData
 
     trainingAddConfigDoForceStageCkbx.checked = configData.force_stage!=undefined
@@ -600,15 +611,37 @@ window.showConfigMenu = (startingData, di) => {
         trainingAddConfigForceStageNumberSelect.disabled = true
     }
 
-    trainingAddConfigDatasetPathInput.value = configData.dataset_path || ""
+    trainingAddConfigDatasetPathInput.value = configData.dataset_path || window.userSettings.datasetsPath
     trainingAddConfigOutputPathInput.value = configData.output_path || ""
+    fp_ckpt_option_male.checked = configData.checkpoint=="[male]"
+    fp_ckpt_option_female.checked = configData.checkpoint=="[female]"
+    fp_ckpt_option_other.checked = configData.checkpoint!="[female]" && configData.checkpoint!="[male]"
     trainingAddConfigCkptPathInput.value = configData.checkpoint || ""
-    trainingAddConfigHiFiCkptPathInput.value = configData.hifigan_checkpoint || ""
+    // trainingAddConfigHiFiCkptPathInput.value = configData.hifigan_checkpoint || ""
 
-    trainingAddConfigWorkersInput.value = parseInt(configData.num_workers)
-    trainingAddConfigBatchSizeInput.value = parseInt(configData.batch_size)
-    trainingAddConfigEpochsPerCkptInput.value = parseInt(configData.epochs_per_checkpoint)
-    trainingAddConfigUseAmp.checked = configData.use_amp ? configData.use_amp=="true" : true
+    hifigan_ckpt_option_male.checked = configData.hifigan_checkpoint=="[male]"
+    hifigan_ckpt_option_female.checked = configData.hifigan_checkpoint=="[female]"
+
+    if (configData.num_workers !== undefined) {
+        trainingAddConfigWorkersInput.value = parseInt(configData.num_workers)
+    } else {
+        trainingAddConfigBatchSizeInput.value = window.localStorage.getItem("training.batch_size")||"8"
+    }
+    if (configData.batch_size !== undefined) {
+        trainingAddConfigBatchSizeInput.value = parseInt(configData.batch_size)
+    } else {
+        trainingAddConfigEpochsPerCkptInput.value = window.localStorage.getItem("training.epochs_per_ckpt")||"3"
+    }
+    if (configData.epochs_per_checkpoint !== undefined) {
+        trainingAddConfigEpochsPerCkptInput.value = parseInt(configData.epochs_per_checkpoint)
+    } else {
+        trainingAddConfigUseAmp.checked = !!parseInt(window.localStorage.getItem("training.useFP16"))
+    }
+    if (configData.use_amp !== undefined) {
+        trainingAddConfigUseAmp.checked = configData.use_amp ? configData.use_amp=="true" : true
+    } else {
+        trainingAddConfigWorkersInput.value = window.localStorage.getItem("training.num_workers")||"3"
+    }
 
     queueItemConfigModalContainer.style.display = "flex"
 }
@@ -639,12 +672,18 @@ acceptConfig.addEventListener("click", () => {
     if (!trainingAddConfigOutputPathInput.value.trim().length) {
         return window.errorModal("You need to specify where to output the intermediate data/models for your dataset.", queueItemConfigModalContainer)
     }
-    if (!trainingAddConfigCkptPathInput.value.trim().length) {
+    if (!fp_ckpt_option_other.checked && !fp_ckpt_option_female.checked && !fp_ckpt_option_male.checked) {
+        return window.errorModal("Please select the FastPitch checkpoint to fine-tune from", queueItemConfigModalContainer)
+    }
+    if (!hifigan_ckpt_option_male.checked && !hifigan_ckpt_option_female.checked ) {
+        return window.errorModal("Please select the HiFi-GAN checkpoint to fine-tune from", queueItemConfigModalContainer)
+    }
+    if (fp_ckpt_option_other.checked && !trainingAddConfigCkptPathInput.value.trim().length) {
         return window.errorModal("You need to specify which FastPitch checkpoint to resume training from (fine-tuning only is supported, right now)", queueItemConfigModalContainer)
     }
-    if (!trainingAddConfigHiFiCkptPathInput.value.trim().length) {
-        return window.errorModal("You need to specify which HiFi-GAN checkpoint to resume training from (fine-tuning only is supported, right now)", queueItemConfigModalContainer)
-    }
+    // if (!trainingAddConfigHiFiCkptPathInput.value.trim().length) {
+    //     return window.errorModal("You need to specify which HiFi-GAN checkpoint to resume training from (fine-tuning only is supported, right now)", queueItemConfigModalContainer)
+    // }
     if (!trainingAddConfigBatchSizeInput.value.trim().length) {
         return window.errorModal("Please enter the base batch size you'd like to use", queueItemConfigModalContainer)
     }
@@ -655,6 +694,13 @@ acceptConfig.addEventListener("click", () => {
     const finishUp = () => {
         queueItemConfigModalContainer.style.display = "none"
 
+        let fastpitch_checkpoint = "[male]"
+        if (fp_ckpt_option_female.checked) {
+            fastpitch_checkpoint = "[female]"
+        } else if (fp_ckpt_option_other.checked) {
+            fastpitch_checkpoint = trainingAddConfigCkptPathInput.replaceAll(/\\/, "/")
+        }
+
         // TODO
         if (configAnExistingItem) {
 
@@ -663,7 +709,7 @@ acceptConfig.addEventListener("click", () => {
             const configData = {
                 "dataset_path": window.training_state.datasetsQueue[queueIndex].dataset_path.replaceAll(/\\/, "/"),
                 "output_path": trainingAddConfigOutputPathInput.value.replaceAll(/\\/, "/"),
-                "checkpoint": fp_ckpt.replaceAll(/\\/, "/"),
+                "checkpoint": fastpitch_checkpoint,
                 "hifigan_checkpoint": hg_ckpt.replaceAll(/\\/, "/"),
 
                 "use_amp": trainingAddConfigUseAmp.checked ? "true" : "false",
@@ -684,7 +730,7 @@ acceptConfig.addEventListener("click", () => {
 
                 "dataset_path": trainingAddConfigDatasetPathInput.value.replaceAll(/\\/, "/"),
                 "output_path": trainingAddConfigOutputPathInput.value.replaceAll(/\\/, "/"),
-                "checkpoint": fp_ckpt.replaceAll(/\\/, "/"),
+                "checkpoint": fastpitch_checkpoint,
                 "hifigan_checkpoint": hg_ckpt.replaceAll(/\\/, "/"),
 
                 "use_amp": trainingAddConfigUseAmp.checked ? "true" : "false",
@@ -701,8 +747,14 @@ acceptConfig.addEventListener("click", () => {
         window.refreshTrainingQueueList()
     }
 
-    const fp_ckpt = trainingAddConfigCkptPathInput.value.trim().replaceAll(/\\/, "/")
-    const hg_ckpt = trainingAddConfigHiFiCkptPathInput.value.trim().replaceAll(/\\/, "/")
+    let fp_ckpt = trainingAddConfigCkptPathInput.value.trim().replaceAll(/\\/, "/")
+    if (fp_ckpt_option_female.checked) {
+        fp_ckpt = "[female]"
+    } else if (fp_ckpt_option_male.checked) {
+        fp_ckpt = "[male]"
+    }
+    // const hg_ckpt = trainingAddConfigHiFiCkptPathInput.value.trim().replaceAll(/\\/, "/")
+    const hg_ckpt = hifigan_ckpt_option_male.checked ? "[male]" : "[female]"
 
     if (fp_ckpt!="[male]" && fp_ckpt!="[female]" && !fs.existsSync(fp_ckpt)) {
         window.confirmModal(`A FastPitch1.1 checkpoint file was not found at the following file/folder location. Continue regardless?<br>${fp_ckpt}`).then(resp => {
@@ -750,6 +802,18 @@ trainingQueueBtnClear.addEventListener("click", () => {
     })
 })
 
+trainingOpenCkpts.addEventListener("click", () => {
+    const output_path = window.training_state.datasetsQueue[window.training_state.selectedQueueItem].output_path
+    if (fs.existsSync(output_path)) {
+        const subItems = fs.readdirSync(output_path)
+        if (subItems.length) {
+            shell.showItemInFolder(`${output_path}/${subItems[0]}`)
+        } else {
+            shell.showItemInFolder(output_path)
+        }
+    }
+})
+
 trainingStartBtn.addEventListener("click", () => {
     if (window.userSettings.installation != "gpu") {
         window.errorModal("The CPU-only installation is enabled. Switch to the GPU installation if you can, or run training on a CUDA-compatible machine if not. It is not practical to run the training on the CPU, it would take forever.")
@@ -759,6 +823,7 @@ trainingStartBtn.addEventListener("click", () => {
     window.ws.send(JSON.stringify({
         model: "",
         task: "startTraining",
+        gpus: setting_cudaDevices.value.replaceAll(" ", ""),
         data: window.training_state.datasetsQueue[window.training_state.trainingQueueItem]
     }))
     trainingStartBtn.style.display = "none"
@@ -867,11 +932,14 @@ exportSubmitButton.addEventListener("click", () => {
             if (res.length) {
                 window.appLogger.log(res)
                 window.errorModal(res)
-                window.createModal("error", `There was an issue with exporting the preview audio file:<br><br>${res}`).then(() => {
+                window.createModal("error", `There was an issue with exporting the preview audio file:<br><br>${res}`).then(resp => {
+                    if (resp) {
+                        shell.showItemInFolder(`${modelExport_outputDir.value.trim()}/${voiceId}.wav`)
+                    }
                     exportModelContainer.click()
                 })
             } else {
-                window.createModal("error", "Model exported successfully").then(() => {
+                window.confirmModal("Model exported successfully. Open output directory?").then(() => {
                     exportModelContainer.click()
                 })
             }

@@ -347,7 +347,7 @@ class FastPitchTrainer(object):
 
         pitch_mean, pitch_std = await self.get_or_calculate_pitch_stats(self.training_log, self.dataset_input, self.cmudict, self.p_arpabet)
 
-        self.model = FastPitch().to(self.device)
+        self.model = FastPitch(logger=self.logger).to(self.device)
         self.attention_kl_loss = AttentionBinarizationLoss()
 
         # Store pitch mean/std as params to translate from Hz during inference
@@ -360,7 +360,9 @@ class FastPitchTrainer(object):
 
         # Load checkpoint
         self.model.training_stage, start_epoch, start_iter, avg_loss_per_epoch = self.load_checkpoint(ckpt_path)
-        if self.model.training_stage==5 or self.force_stage==5:
+        # if (self.model.training_stage==5 or self.force_stage==5) and (self.force_stage is not None or self.force_stage==5):
+        # if self.model.training_stage==5 and (self.force_stage is None or self.force_stage==5):
+        if (self.model.training_stage==5 and self.force_stage is None) or self.force_stage==5:
             self.END_OF_TRAINING = True
             self.JUST_FINISHED_STAGE = True
             raise
@@ -577,7 +579,9 @@ class FastPitchTrainer(object):
         if os.path.exists(f'{dataset_output}/training.log'):
             with open(f'{dataset_output}/training.log') as f:
                 self.training_log = f.read().split("\n")
-            self.training_log.append("\nNew Session")
+            time_str = str(datetime.datetime.now().time())
+            time_str = time_str.split(":")[0]+":"+time_str.split(":")[1]+":"+time_str.split(":")[2].split(".")[0]
+            self.training_log.append(f'\n{time_str} | New Session')
         else:
             self.training_log.append(f'No {dataset_output}/training.log file found. Starting anew.')
             print(self.training_log[0])
@@ -667,6 +671,7 @@ class FastPitchTrainer(object):
                     target_delta = 45e-5 # 4e-4
 
             target_delta = target_delta * 1.5
+            target_delta = target_delta * 2
 
             for module in [self.model.attention, self.model.duration_predictor, self.model.pitch_predictor, self.model.pitch_emb, self.model.energy_predictor]:
                 for param in module.parameters():
@@ -887,7 +892,9 @@ class FastPitchTrainer(object):
             else:
                 avg_losses_print = ""
 
-            print_line = f'Stage: {self.model.training_stage} | Epoch: {self.epoch} | iter: {(self.total_iter+1)%self.num_iters}/{self.num_iters} -> {self.total_iter} | loss: {int(self.iter_loss*10000)/10000} | frames/s {int(self.iter_num_frames / self.iter_time)}{avg_losses_print} | Target: {str(self.target_delta).split("00000")[0]}    '
+            iter_loss = "{:.6f}".format((int(self.iter_loss*10000)/10000))
+            target_delta = "{:.6f}".format(int(self.target_delta*10000)/10000)#.split("00000")[0]
+            print_line = f'Stage: {self.model.training_stage} | Epoch: {self.epoch} | iter: {(self.total_iter+1)%self.num_iters}/{self.num_iters} -> {self.total_iter} | loss: {iter_loss} | frames/s {int(self.iter_num_frames / self.iter_time)}{avg_losses_print} | Target: {target_delta}    '
             self.training_log_live_line = print_line
             self.print_and_log(save_to_file=self.dataset_output)
 
@@ -993,13 +1000,13 @@ class FastPitchTrainer(object):
                 os.remove(f'{self.dataset_output}/{ckpt}')
 
         # Log the epoch summary
-        print_line = f'Stage: {self.model.training_stage} | Epoch: {self.epoch} | {self.dataset_output}~{self.epoch}_{self.total_iter}.pt | frames/s: {int(frames_s)}'
+        print_line = f'Stage: {self.model.training_stage} | Epoch: {self.epoch} | {self.dataset_output.split("/")[-1]}~{self.epoch}_{self.total_iter}.pt | frames/s: {int(frames_s)}'
 
         if avg_loss is not None:
-            print_line += f' | Loss: {int(avg_loss*100000)/100000}'
+            print_line += f' | Loss: {(int(avg_loss*100000)/100000):.5f}'
         if loss_delta is not None:
-            print_line += f' | Delta: {int(loss_delta*100000)/100000}'
-        print_line += f' | Target: {int(self.target_delta*100000)/100000}'
+            print_line += f' | Delta: {(int(loss_delta*100000)/100000):.5f}'
+        print_line += f' | Target: {(int(self.target_delta*100000)/100000):.5f}'
 
         checkpoint = {
             'epoch': self.epoch,
@@ -1035,7 +1042,7 @@ class FastPitchTrainer(object):
                 "version": "2.0",
                 "modelVersion": "2.0",
                 "modelType": "FastPitch1.1",
-                "author": "DanRuta",
+                "author": "",
                 "lang": "en",
                 "games": [
                     {
@@ -1159,6 +1166,7 @@ class FastPitchTrainer(object):
                             durs = attn_hard_dur[ai].squeeze().cpu().detach().numpy()
                             np.save(out_path.replace(".pt", ".npy"), durs)
                     except:
+                        self.logger.info(f'Failed for: {x[-1]}')
                         self.print_and_log(f'Failed for: {x[-1]}', save_to_file=self.dataset_output)
                         self.print_and_log(traceback.format_exc(), save_to_file=self.dataset_output)
                         raise

@@ -261,7 +261,7 @@ class Wav2Vec2PlusPuncTranscribe(object):
 
                         if fi%3==0 and websocket is not None:
                             with open(f'{"./resources/app" if self.PROD else "."}/python/transcribe/.progress.txt', "w+") as f:
-                                f.write(f'{(int(fi+1)/len(input_files)*100*100)/100}')
+                                f.write(f'{(int(fi+1)/len(input_files)*100*100)/100}%')
 
                         new_name = file.split("/")[-1].replace(".wem", "") # Helps avoid some issues, later down the line
                         if new_name in list(finished_transcript.keys()):
@@ -344,7 +344,7 @@ class Wav2Vec2PlusPuncTranscribe(object):
 
         if outputDirectory:
             os.makedirs(outputDirectory, exist_ok=True)
-        with open(f'{outputDirectory or inPathParent}/metadata.csv', "w+") as f:
+        with open(f'{outputDirectory or inPathParent}/metadata.csv', "w+", encoding="utf8") as f:
             f.write("\n".join(metadata))
 
 
