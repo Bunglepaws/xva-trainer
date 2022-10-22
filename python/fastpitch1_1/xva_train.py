@@ -1285,8 +1285,8 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=str, required=True, help='Checkpoint path')
     parser.add_argument('--epochs-per-checkpoint', type=int, default=5, help='Epochs per checkpoint')
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
-    parser.add_argument('--fp16', type=bool, dest='fp16', action='store_true', help='FP16 enabled')
-    parser.add_argument('--no-fp16', type=bool, dest='fp16', action='store_false', help='FP16 disabled')
+    parser.add_argument('--fp16', dest='fp16', action='store_true', help='FP16 enabled')
+    parser.add_argument('--no-fp16', dest='fp16', action='store_false', help='FP16 disabled')
     parser.set_defaults(fp16=True)
     args, _ = parser.parse_known_args()
 
