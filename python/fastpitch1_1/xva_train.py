@@ -1285,6 +1285,9 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', type=str, required=True, help='Checkpoint path')
     parser.add_argument('--epochs-per-checkpoint', type=int, default=5, help='Epochs per checkpoint')
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
+    parser.add_argument('--fp16', type=bool, dest='fp16', action='store_true', help='FP16 enabled')
+    parser.add_argument('--no-fp16', type=bool, dest='fp16', action='store_false', help='FP16 disabled')
+    parser.set_defaults(fp16=True)
     args, _ = parser.parse_known_args()
 
     gpus = [int(val) for val in args.gpus.split(",")]
@@ -1355,6 +1358,7 @@ if __name__ == '__main__':
                 init_data["num_workers"] = 2 # 16
                 init_data["batch_size"] = bs
                 init_data["epochs_per_checkpoint"] = args.epochs_per_checkpoint
+                init_data["use_amp"] = args.fp16
 
                 print("start training")
                 await TRAINER.start(init_data, gpus=gpus)
