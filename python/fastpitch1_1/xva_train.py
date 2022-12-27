@@ -1358,7 +1358,7 @@ if __name__ == '__main__':
                 init_data["num_workers"] = 2 # 16
                 init_data["batch_size"] = bs
                 init_data["epochs_per_checkpoint"] = args.epochs_per_checkpoint
-                init_data["use_amp"] = args.fp16
+                init_data["use_amp"] = 'true' if args.fp16 else 'false'
 
                 print("start training")
                 await TRAINER.start(init_data, gpus=gpus)
