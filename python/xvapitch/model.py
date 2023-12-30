@@ -15,6 +15,7 @@ try:
     from python.xvapitch.util import maximum_path, rand_segments, segment, sequence_mask, generate_path
     from python.xvapitch.text import get_text_preprocessor, ALL_SYMBOLS, lang_names
     from python.xvapitch.util import maximum_path_cupy, maximum_path_numba
+
 except:
     try:
         from resources.app.python.xvapitch.glow_tts import RelativePositionTransformer
@@ -24,6 +25,7 @@ except:
         from resources.app.python.xvapitch.util import maximum_path, rand_segments, segment, sequence_mask, generate_path
         from resources.app.python.xvapitch.text import get_text_preprocessor, ALL_SYMBOLS, lang_names
         from resources.app.python.xvapitch.util import maximum_path_cupy, maximum_path_numba
+
     except:
         from glow_tts import RelativePositionTransformer
         from wavenet import WN
@@ -37,6 +39,8 @@ except:
 # import cupy as cp
 
 class xVAPitch(nn.Module):
+
+    criterion = []
 
     def __init__(self, args):
         super().__init__()
@@ -216,6 +220,14 @@ class xVAPitch(nn.Module):
 
         self.TEMP_timing = []
 
+        if len(self.criterion) == 0:
+            import traceback
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            try:
+                from python.xvapitch.losses import VitsDiscriminatorLoss, VitsGeneratorLoss
+            except:
+                print(traceback.format_exc)
+            self.criterion = [VitsGeneratorLoss(args).to(device), VitsDiscriminatorLoss().to(device)]
 
 
     def format_batch (self, batch):

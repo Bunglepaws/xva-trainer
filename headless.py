@@ -1,3 +1,8 @@
+import torch._dynamo
+torch._dynamo.config.suppress_errors = True
+torch._dynamo.config.skip_nnmodule_hook_guards = False
+torch.set_warn_always(False)
+
 import argparse
 import traceback
 import gc
